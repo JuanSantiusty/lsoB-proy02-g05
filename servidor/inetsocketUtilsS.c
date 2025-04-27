@@ -23,9 +23,13 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stddef.h>
 
 #include "inetsocket.h" 
 
+int numConectados=0;
+int numNombres=0;
+char **nombres=NULL;
 
 
 int create_inet_server()
@@ -90,7 +94,7 @@ int create_inet_server()
       while(1)
       {
         //Validacion del limite de usuarios activos 
-        if(numConectados<=Backlog){
+        if(numConectados<BACKLOG){
           connfd = accept(sockfd, (struct sockaddr *)&client, &len);
         }else{
           connfd = accept(sockfd, (struct sockaddr *)&client, &len);
@@ -98,6 +102,8 @@ int create_inet_server()
           write(connfd, msg, strlen(msg));
           close(connfd);
         }
+        
+        
         if (connfd < 0) 
         { 
             fprintf(stderr, "[SERVER-error]: conexion no aceptada. %d: %s \n", errno, strerror( errno ));
@@ -112,11 +118,14 @@ int create_inet_server()
                 //Comvertir nombre a minusculas
                 nombreMinusculas(buff_rx);
                 /*Cerrar conexion si el nombre de usuario existe, caso contrario guardar el nombre*/
-                if(buscarnombre(buff_rx)!=-1){
+                if(buscar_nombre(buff_rx)!=-1){
+                    const char *mensaje = "Nombre ocupado, Intente otro nombre\n";
+                    write(connfd, mensaje, strlen(mensaje));
                     close(connfd);
                     break;
                 }else{
                     agregar_nombre(buff_rx);
+                    numConectados++;
                 }
 
                 if(len_rx == -1)
@@ -146,7 +155,7 @@ void* usuario(void* nomUsuario){
 void agregar_nombre(const char *nombre) {
         nombres = realloc(nombres, (numNombres + 1) * sizeof(char*));
         nombres[numNombres] = malloc(strlen(nombre) + 1);
-        strcpy(nombres[num_nombres], nombre);
+        strcpy(nombres[numNombres], nombre);
         numNombres++;
 }
 

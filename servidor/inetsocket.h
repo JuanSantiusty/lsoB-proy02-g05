@@ -1,6 +1,8 @@
 #ifndef UNIX_SOCKET_H
 #define UNIX_SOCKET_H
 
+#include <stddef.h>
+
 /* parametros del servidor */
 #define SERV_PORT       8080              /* puerto */
 #define SERV_HOST_ADDR "192.168.1.10"     /* IP, solo soporta IPV4  */
@@ -9,9 +11,6 @@
 
 
 
-int numConectados 0                    /* Contador de conecciones */
-int numNombres=0;                       /* Contador de nombres*/
-char **nombres=NULL;                     /*Lista de nombres*/
 
 int create_inet_server();
 
