@@ -95,23 +95,24 @@ int create_inet_server()
       /* Acceptando datos desde sockets iterativamente */
       while(1)
       {
-	printf("Esperando nueva conexión...\n");
-        connfd = accept(sockfd, (struct sockaddr *)&client, &len);
-         if (connfd < 0) {
-        fprintf(stderr, "[SERVER-error]: conexion no aceptada. %d: %s \n", errno, strerror(errno));
-        continue;  // Continuar en lugar de retornar
-        }
         //Validacion del limite de usuarios activos 
         if(numConectados<BACKLOG){
-          printf("Conectado");
+          connfd = accept(sockfd, (struct sockaddr *)&client, &len);
         }else{
+          connfd = accept(sockfd, (struct sockaddr *)&client, &len);
           const char *msg = "Servidor ocupado. Intente más tarde\n";
           write(connfd, msg, strlen(msg));
           close(connfd);
-          continue;
         }
         
         
+        if (connfd < 0) 
+        { 
+            fprintf(stderr, "[SERVER-error]: conexion no aceptada. %d: %s \n", errno, strerror( errno ));
+            return -1;
+        }
+        else
+        {
                 /* leer mensaje del client, copiar este dentro de un buffer,Leer nombre */
                 len_rx = read(connfd, buff_rx, sizeof(buff_rx));
                 //Comvertir nombre a minusculas
@@ -127,7 +128,6 @@ int create_inet_server()
                 }
                 
                 //Crear hilo de cliente
-		printf("Hola desde crear un hilo");
                 pthread_mutex_lock(&mutex);
                   //Guardar nuevo cliente en el arreglo
                   strcpy(clientes[numConectados].nombre,buff_rx);
@@ -142,17 +142,16 @@ int create_inet_server()
                   
                   pthread_create(&hiloCliente, NULL,usuario,sock_ptr);
                   pthread_detach(hiloCliente);
-        
+        }
     }
     return 1;
 }
 
 void* usuario(void* cliente){
-printf("Hola desde el manejo de un cliente");  
   int clienteSocket=*((int *)cliente);
   free(cliente);
   //Variables necesarias, buscar nombre del cliente
-  char mensajeFinal[150]={0};
+  char mensajeFinal[BUF_SIZE]={0};
   printf("Hola");
   int i;
   char buffer[BUF_SIZE]={0};
@@ -162,7 +161,6 @@ printf("Hola desde el manejo de un cliente");
   for(i=0;i<numConectados;i++){
     if(clientes[i].socket==clienteSocket){
       strncpy(nombreCliente, clientes[i].nombre, sizeof(nombreCliente)-1);
-      break;
     }
   }
   pthread_mutex_unlock(&mutex);
@@ -178,7 +176,6 @@ printf("Hola desde el manejo de un cliente");
     printf("%s\n", mensajeFinal);
     enviarMensajeUsuarios(mensajeFinal,clienteSocket);
     memset(buffer, 0, sizeof(buffer));
-    memset(mensajeFinal, 0, sizeof(mensajeFinal));
   }
   
   //Desconectar cliente
@@ -189,7 +186,6 @@ printf("Hola desde el manejo de un cliente");
 }
 
 void agregar_nombre(const char *nombre) {
-	printf("Hola desde agregar nombres");
         nombres = realloc(nombres, (numNombres + 1) * sizeof(char*));
         nombres[numNombres] = malloc(strlen(nombre) + 1);
         strcpy(nombres[numNombres], nombre);
@@ -218,18 +214,14 @@ void nombreMinusculas(char *nom){
     }
 }
 
-void enviarMensajeUsuarios(const char *mensaje, int remitente) { 
-pthread_mutex_lock(&mutex);
-printf("Enviando mensaje");   
+void enviarMensajeUsuarios(const char *mensaje, int remitente) {
+    pthread_mutex_lock(&mutex);
     int i;
     for(i = 0; i < numConectados; i++) {
         if(clientes[i].socket != remitente) {
-            ssize_t bytesEnviados=write(clientes[i].socket, mensaje, strlen(mensaje));
-            if(bytesEnviados<0) {
+            if(write(clientes[i].socket, mensaje, strlen(mensaje)) {
                 perror("Error al enviar mensaje");
                 // Opcional: marcar cliente como desconectado
-            }else{
-              printf("Mensaje enviado correctamente");
             }
         }
     }
