@@ -41,4 +41,7 @@ void enviarMensajeUsuarios(const char *mensaje, int remitente);
 //Funcion para eliminar un cliente
 void eliminarCliente(const char *nombre);
 
+//Funcion para manejar las señales sigterm
+void manejar_sigterm(int sig);
+
 #endif
