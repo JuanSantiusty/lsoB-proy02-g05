@@ -40,133 +40,115 @@ char **nombres=NULL;
 
 
 int create_inet_server()
-{ 
-    //Manejador de señales
+{
     signal(SIGTERM, manejar_sigterm);
-    int sockfd, connfd ;  /* descriptores de socket escuchando y socket conexion */
-    unsigned int len;     /* longitud de la direccion del cliente */
-    struct sockaddr_in servaddr, client; 
-    
-    int  len_rx = 0;          /* longitud de recibido en bytes */
-    char buff_rx[BUF_SIZE];   /* buffers para recepcion  */
-    
-    
-    
-     
-    /* creacion de socket */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (sockfd == -1) 
-    { 
-        fprintf(stderr, "[SERVER-error]: creacion de socket fallida. %d: %s \n", errno, strerror( errno ));
-        return -1;
-    } 
-    else
+    int sockfd, connfd;
+    unsigned int len;
+    struct sockaddr_in servaddr, client;
+    int len_rx = 0;
+    char buff_rx[BUF_SIZE];
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1)
     {
-        printf("[SERVER]: Socket creado exitosamente..\n"); 
+        fprintf(stderr, "[SERVER-error]: creacion de socket fallida. %d: %s \n", errno, strerror(errno));
+        return -1;
     }
-    
-    /* limpiar estructura */
+    printf("[SERVER]: Socket creado exitosamente..\n");
+
     memset(&servaddr, 0, sizeof(servaddr));
-  
-    /* asignar IP, SERV_PORT, IPV4 */
-    servaddr.sin_family      = AF_INET; 
-    servaddr.sin_addr.s_addr = inet_addr(SERV_HOST_ADDR); 
-    servaddr.sin_port        = htons(SERV_PORT); 
-    
-    
-    /* Bind socket */
-    if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0) 
-    { 
-        fprintf(stderr, "[SERVER-error]: bind fallido. %d: %s \n", errno, strerror( errno ));
-        return -1;
-    } 
-    else
-    {
-        printf("[SERVER]: bind exitoso \n");
-    }
-  
-    /* Listen */
-    if ((listen(sockfd, BACKLOG)) != 0) 
-    { 
-        fprintf(stderr, "[SERVER-error]: listen falido. %d: %s \n", errno, strerror( errno ));
-        return -1;
-    } 
-    else
-    {
-        printf("[SERVER]: Socket escuchando en SERV_PORT %d \n\n", ntohs(servaddr.sin_port) ); 
-    }
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = inet_addr(SERV_HOST_ADDR);
+    servaddr.sin_port = htons(SERV_PORT);
 
-    len = sizeof(client); 
+    if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
+    {
+        fprintf(stderr, "[SERVER-error]: bind fallido. %d: %s \n", errno, strerror(errno));
+        return -1;
+    }
+    printf("[SERVER]: bind exitoso \n");
 
-      /* Acceptando datos desde sockets iterativamente */
-      while(1)
-      {
-	printf("Esperando nueva conexión...\n");
+    if ((listen(sockfd, BACKLOG)) != 0)
+    {
+        fprintf(stderr, "[SERVER-error]: listen fallido. %d: %s \n", errno, strerror(errno));
+        return -1;
+    }
+    printf("[SERVER]: Socket escuchando en SERV_PORT %d \n\n", ntohs(servaddr.sin_port));
+
+    len = sizeof(client);
+
+    while (1)
+    {
+        printf("Esperando nueva conexión...\n");
         connfd = accept(sockfd, (struct sockaddr *)&client, &len);
-         if (connfd < 0) {
-        fprintf(stderr, "[SERVER-error]: conexion no aceptada. %d: %s \n", errno, strerror(errno));
-        continue;  // Continuar en lugar de retornar
+        if (connfd < 0)
+        {
+            fprintf(stderr, "[SERVER-error]: conexion no aceptada. %d: %s \n", errno, strerror(errno));
+            continue;
         }
-        //Validacion del limite de usuarios activos 
-        if(numConectados<BACKLOG){
-          printf("Conectado");
-        }else{
-          const char *msg = "Servidor ocupado. Intente más tarde\n";
-          write(connfd, msg, strlen(msg));
-          close(connfd);
-          continue;
+
+        if (numConectados >= BACKLOG)
+        {
+            const char *msg = "Servidor ocupado. Intente más tarde\n";
+            write(connfd, msg, strlen(msg));
+            close(connfd);
+            continue;
         }
-        
-        
-                /* leer mensaje del client, copiar este dentro de un buffer,Leer nombre */
-                len_rx = read(connfd, buff_rx, sizeof(buff_rx));
-                //Comvertir nombre a minusculas
-                nombreMinusculas(buff_rx);
-                /*Cerrar conexion si el nombre de usuario existe, caso contrario guardar el nombre*/
-                if(buscar_nombre(buff_rx)!=-1){
-                    const char *mensaje = "Usuario repetido";
-                    write(connfd, mensaje, strlen(mensaje));
-                    close(connfd);
-                    continue;
-                }else{
-                    agregar_nombre(buff_rx);
-                }
-                
-                //Crear hilo de cliente
-		printf("Hola antes de agregar cliente");
-                pthread_mutex_lock(&mutex);
-                  //Guardar nuevo cliente en el arreglo
-                  strcpy(clientes[numConectados].nombre,buff_rx);
-                  clientes[numConectados].socket = connfd;
-                  clientes[numConectados].address = client;
-                  numConectados++;
-		pthread_mutex_unlock(&mutex);
-		printf("Hola despues de agregar cliente");
-		printf("Cliente recibido %d",connfd);
-		printf("Cliente guardado %d",clientes[numConectados-1].socket);
-                  //Crear Hilo
-                  pthread_t hiloCliente;
-                  int *sock_ptr = malloc(sizeof(int)); 
-                  *sock_ptr = connfd;
-                  printf("Hola desde crear un hilo");
-                  pthread_create(&hiloCliente, NULL,usuario,sock_ptr);
-                  pthread_detach(hiloCliente);
-        
+
+        len_rx = read(connfd, buff_rx, sizeof(buff_rx) - 1);
+        if (len_rx <= 0)
+        {
+            close(connfd);
+            continue;
+        }
+
+        buff_rx[len_rx] = '\0';
+        nombreMinusculas(buff_rx);
+
+        if (buscar_nombre(buff_rx) != -1)
+        {
+            const char *mensaje = "ERROR";  // ENVÍA "ERROR" para que el cliente lo detecte
+            write(connfd, mensaje, strlen(mensaje));
+            close(connfd);
+            continue;
+        }
+        else
+        {
+            agregar_nombre(buff_rx);
+            const char *mensaje = "OK";  // ENVÍA confirmación al cliente
+            write(connfd, mensaje, strlen(mensaje));
+        }
+
+        pthread_mutex_lock(&mutex);
+        strcpy(clientes[numConectados].nombre, buff_rx);
+        clientes[numConectados].socket = connfd;
+        clientes[numConectados].address = client;
+        numConectados++;
+        pthread_mutex_unlock(&mutex);
+
+        printf("Cliente [%s] en socket %d listo para recibir\n", buff_rx, connfd);
+
+        pthread_t hiloCliente;
+        int *sock_ptr = malloc(sizeof(int));
+        *sock_ptr = connfd;
+        pthread_create(&hiloCliente, NULL, usuario, sock_ptr);
+        pthread_detach(hiloCliente);
     }
+
     return 1;
 }
 
 void* usuario(void* cliente) {
     int clienteSocket = *((int *)cliente);
     free(cliente);
-    
+
     printf("Hilo iniciado para socket %d\n", clienteSocket);
-    
+
     char mensajeFinal[153] = {0};
     char buffer[BUF_SIZE] = {0};
     int len_rx;
     char nombreCliente[50] = {0};
-    
+
     // Obtener nombre del cliente
     pthread_mutex_lock(&mutex);
     for(int i = 0; i < numConectados; i++) {
@@ -176,32 +158,30 @@ void* usuario(void* cliente) {
         }
     }
     pthread_mutex_unlock(&mutex);
-    
+
     printf("Cliente [%s] en socket %d listo para recibir\n", nombreCliente, clienteSocket);
-    
-    // Configurar timeout para el socket
+
+    // Timeout de inactividad
     struct timeval tv;
-    tv.tv_sec = 70;  // 30 segundos de timeout
+    tv.tv_sec = 300;  // 5 minutos
     tv.tv_usec = 0;
     setsockopt(clienteSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-    
-    // Bucle de recepción mejorado
+
     while(1) {
-        len_rx = read(clienteSocket, buffer, sizeof(buffer)-1);
-        
+        len_rx = read(clienteSocket, buffer, sizeof(buffer) - 1);
+
         if(len_rx > 0) {
             buffer[len_rx] = '\0';
             printf("Mensaje recibido de %s (socket %d): %s\n", nombreCliente, clienteSocket, buffer);
-            
+
             if(strcmp(buffer, "/exit") == 0) {
                 printf("Cliente %s solicitó salir\n", nombreCliente);
                 break;
             }
-            
-            // Formatear y enviar mensaje
+
             snprintf(mensajeFinal, sizeof(mensajeFinal), "[%s]: %s", nombreCliente, buffer);
             enviarMensajeUsuarios(mensajeFinal, clienteSocket);
-            
+
             memset(buffer, 0, sizeof(buffer));
             memset(mensajeFinal, 0, sizeof(mensajeFinal));
         }
@@ -218,8 +198,7 @@ void* usuario(void* cliente) {
             break;
         }
     }
-    
-    // Limpieza final
+
     eliminarCliente(nombreCliente);
     close(clienteSocket);
     printf("Hilo terminado para cliente %s\n", nombreCliente);
@@ -257,20 +236,21 @@ void nombreMinusculas(char *nom){
 }
 
 void enviarMensajeUsuarios(const char *mensaje, int remitente) { 
-pthread_mutex_lock(&mutex);
-printf("Enviando mensaje");   
-    int i;
-    for(i = 0; i < numConectados; i++) {
-        
-          ssize_t bytesEnviados=write(clientes[i].socket, mensaje, strlen(mensaje));
-          if(bytesEnviados<0) {
+    pthread_mutex_lock(&mutex);
+    printf("Enviando mensaje...\n");   
+
+    for(int i = 0; i < numConectados; i++) {
+        if (clientes[i].socket == remitente)
+            continue;  // No reenviar al emisor
+
+        ssize_t bytesEnviados = write(clientes[i].socket, mensaje, strlen(mensaje));
+        if(bytesEnviados < 0) {
             perror("Error al enviar mensaje");
-              // Opcional: marcar cliente como desconectado
-          }else{
-            printf("Mensaje enviado correctamente");
-          }
-        
+        } else {
+            printf("Mensaje enviado a %s correctamente\n", clientes[i].nombre);
+        }
     }
+
     pthread_mutex_unlock(&mutex);
 }
 

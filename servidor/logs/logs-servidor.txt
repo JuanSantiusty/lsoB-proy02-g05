@@ -1,1 +1,1 @@
-[LOG juan, carlos]
+[LOG andres, maria, jose, antonio, asda]

@@ -1,6 +1,5 @@
 #include "inetsocket.h"
 
 int main() {
-    create_inet_client();
-    return 0;
+    return create_inet_client();
 }

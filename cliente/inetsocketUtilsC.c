@@ -4,147 +4,125 @@
 /*          envia un texto y se desconecta                                     */
 /*************************************************************************************/
 
-#include <netdb.h> 
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <string.h> 
-#include <sys/socket.h> 
-#include <unistd.h>
-#include <netinet/in.h>
-#include <arpa/inet.h> 
-#include <unistd.h>
-#include <pthread.h>  
-#include <signal.h>
-#include <fcntl.h> 
-#include <sys/stat.h>
 #include "inetsocket.h"
+#include <pthread.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
-#define MAX_MESSAGE_SIZE 1024
+#define MAX_MSG 1024
 
 int sockfd;
-FILE *chat_file;
-char username[50];
+char login[50];
+FILE *log_file;
 
-void *recibir_mensajes(void *arg) {
-    char buffer[MAX_MESSAGE_SIZE];
-    while (1) {
-        int bytes = read(sockfd, buffer, sizeof(buffer) - 1);
-        if (bytes <= 0) {
-            printf("Servidor desconectado o error.\n");
-            break;
-        }
-        buffer[bytes] = '\0';
-        printf("%s\n", buffer);
-        if (chat_file != NULL) {
-            fprintf(chat_file, "%s\n", buffer); // Guardar en chats.txt
-            fflush(chat_file);
-        }
-    }
-    pthread_exit(NULL);
-}
+void *enviar_mensajes(void *arg);
+void *recibir_mensajes(void *arg);
 
-void *enviar_mensajes(void *arg) {
-    char buffer[MAX_MESSAGE_SIZE];
-    while (1) {
-        if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
-            buffer[strcspn(buffer, "\n")] = '\0'; // Quitar salto de línea
-
-            if (strcmp(buffer, "/exit") == 0) {
-                write(sockfd, buffer, strlen(buffer)); // Avisar al servidor
-                break;
-            }
-
-            write(sockfd, buffer, strlen(buffer));
-        }
-    }
-    pthread_exit(NULL);
-}
-
-
-int create_inet_client() 
+int create_inet_client()
 {
-    int sockfd; 
     struct sockaddr_in servaddr;
-    pthread_t hilo_envio, hilo_recepcion;
-    char respuesta[100];
 
-    /* Creación del Socket */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (sockfd == -1) 
-    { 
-        printf("CLIENT: creacion del socket fallida...\n"); 
-        return -1;  
-    } 
-    else
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1)
     {
-        printf("CLIENT: Socket creado exitosamente..\n"); 
+        printf("CLIENT: Creación del socket fallida...\n");
+        return -1;
     }
 
     memset(&servaddr, 0, sizeof(servaddr));
-
-    /* Asignar IP, PORT */
-    servaddr.sin_family = AF_INET; 
-    servaddr.sin_addr.s_addr = inet_addr(SERVER_ADDRESS); 
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = inet_addr(SERVER_ADDRESS);
     servaddr.sin_port = htons(PORT);
 
-    /* Para conectar el socket client al socket server */
-    if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) 
-    { 
-        printf("CLIENT: conexión con el server fallida...\n");  
+    if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+    {
+        printf("CLIENT: Conexión con el servidor fallida...\n");
         return -1;
-    } 
+    }
 
-    printf("CLIENT: conectado al server..\n");
+    printf("CLIENT: Conectado al servidor...\n");
 
-    /* Ingresar nombre de usuario */
     printf("Ingrese su nombre de usuario: ");
-    fgets(username, sizeof(username), stdin);
-    username[strcspn(username, "\n")] = '\0'; // quitar salto de línea
+    fgets(login, sizeof(login), stdin);
+    login[strcspn(login, "\n")] = 0;
 
-    /* Enviar nombre de usuario */
-    write(sockfd, username, strlen(username));
+    write(sockfd, login, strlen(login));
 
-    /* Esperar confirmación del servidor */
-    int bytes = read(sockfd, respuesta, sizeof(respuesta) - 1);
-    if (bytes <= 0) {
-        printf("CLIENT: error en la respuesta del servidor.\n");
-        close(sockfd);
-        return -1;
-    }
-    respuesta[bytes] = '\0';
-    printf("Servidor: %s\n", respuesta);
+    char response[100];
+    int len = read(sockfd, response, sizeof(response) - 1);
+    response[len] = '\0';
 
-    if (strcmp(respuesta, "Usuario repetido") == 0) {
-        printf("CLIENT: Nombre de usuario en uso. Terminando conexión.\n");
+    if (strcmp(response, "ERROR") == 0)
+    {
+        printf("CLIENT: Nombre de usuario en uso. Intenta con otro.\n");
         close(sockfd);
         return -1;
     }
 
-    /* Crear carpeta chats y abrir archivo para guardar historial */
-    mkdir("./chats", 0777);
-    chat_file = fopen("./chats/chats.txt", "w");
-    if (chat_file == NULL) {
-        perror("Error abriendo chats.txt");
-    }
+    printf("CLIENT: Usuario aceptado. Bienvenido al chat, %s.\n", login);
 
-    /* Crear hilos para envío y recepción de mensajes */
+    system("mkdir -p ./chats");
+    log_file = fopen("./chats/chats.txt", "w");
+
+    pthread_t hilo_envio, hilo_recepcion;
     pthread_create(&hilo_envio, NULL, enviar_mensajes, NULL);
     pthread_create(&hilo_recepcion, NULL, recibir_mensajes, NULL);
 
-    /* Esperar que el hilo de envío finalice (cuando se envíe /exit) */
     pthread_join(hilo_envio, NULL);
 
-    /* Cerrar socket */
+    fclose(log_file);
     close(sockfd);
-    printf("CLIENT: desconectado del servidor.\n");
+    return 0;
+}
 
-    /* Cerrar archivo de chats */
-    if (chat_file != NULL) {
-        fclose(chat_file);
+void *enviar_mensajes(void *arg)
+{
+    char mensaje[MAX_MSG];
+
+    while (1)
+    {
+        if (fgets(mensaje, sizeof(mensaje), stdin) == NULL)
+            break;
+
+        mensaje[strcspn(mensaje, "\n")] = 0;
+
+        if (strcmp(mensaje, "/exit") == 0)
+        {
+            write(sockfd, mensaje, strlen(mensaje));
+            printf("CLIENT: Saliendo del chat...\n");
+            break;
+        }
+
+        write(sockfd, mensaje, strlen(mensaje));
     }
 
-    /* Terminar hilo de recepción */
-    pthread_cancel(hilo_recepcion);
+    return NULL;
+}
 
-    return 0;
+void *recibir_mensajes(void *arg)
+{
+    char mensaje[MAX_MSG];
+
+    while (1)
+    {
+        int len = read(sockfd, mensaje, sizeof(mensaje) - 1);
+        if (len <= 0)
+        {
+            printf("CLIENT: Conexión cerrada por el servidor o error.\n");
+            break;
+        }
+
+        mensaje[len] = '\0';
+
+        printf("%s\n", mensaje);
+        fprintf(log_file, "%s\n", mensaje);
+        fflush(log_file);
+    }
+
+    return NULL;
 }
